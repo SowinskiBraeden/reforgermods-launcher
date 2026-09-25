@@ -1,0 +1,94 @@
+# Maintainer: reforgermods.net
+#
+# Builds the launcher from a source tarball produced by scripts/build-arch.sh.
+# The tarball is the working tree minus node_modules/target/dist, so this
+# packages exactly what is checked out — not a tagged release.
+
+pkgname=reforgermods-launcher
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Server browser and direct launcher for Arma Reforger (reforgermods.net)"
+arch=('x86_64')
+url="https://reforgermods.net"
+license=('LicenseRef-Proprietary')
+
+# webkit2gtk-4.1 pulls gtk3, libsoup3, glib2 and the rest of the WebKit stack.
+# The binary links rustls rather than OpenSSL, so there is no openssl dependency.
+depends=('webkit2gtk-4.1' 'gtk3' 'libsoup3' 'glibc' 'gcc-libs')
+# cmake builds aws-lc-sys, the C crypto library behind rustls' default
+# provider. Without it the crate's build script produces no library and the
+# link fails late with a wall of undefined aws_lc_* symbols.
+makedepends=('rust' 'nodejs' 'npm' 'cmake')
+
+# !lto: makepkg's default OPTIONS put -flto=auto into CFLAGS/LDFLAGS. That
+#   makes aws-lc-sys compile its C crypto into GCC LTO bitcode, which the
+#   linker rustc drives cannot resolve — the build dies at the very last step
+#   with a page of undefined aws_lc_* symbols. Rust-level LTO is unaffected:
+#   that comes from [profile.release] in the workspace manifest.
+# !debug: the release profile already strips, so a -debug split package would
+#   be empty. One artifact to hand over is the point.
+options=('!lto' '!debug')
+
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  # The frontend is embedded into the binary by tauri-build, so it has to exist
+  # before cargo runs.
+  npm ci
+  npm run build
+
+  # --features custom-protocol is what makes this a production build: without
+  # it tauri-build sets cfg(dev) and the app loads its UI from the Vite dev
+  # server on localhost:1420 instead of the embedded assets. See the comment on
+  # that feature in src-tauri/Cargo.toml.
+  cargo build --release --locked -p reforgermods-launcher --features custom-protocol
+
+  # Assert the result is not a dev build. You cannot tell by inspecting the
+  # binary — tauri embeds the whole config, devUrl included, either way, and
+  # brotli-compresses the assets. The signal is the cargo:rustc-cfg=dev that
+  # tauri-build emits, recorded in the build script's output file. A dev build
+  # packages and installs perfectly and then shows ERR_CONNECTION_REFUSED on
+  # the tester's machine, which is exactly the report you cannot debug
+  # remotely.
+  local build_out
+  build_out=$(ls -t target/release/build/reforgermods-launcher-*/output | head -1)
+  if [[ -z "$build_out" ]]; then
+    echo "ERROR: could not find the build script output to verify the build mode." >&2
+    return 1
+  fi
+  if grep -q "rustc-cfg=dev" "$build_out"; then
+    echo "ERROR: this is a DEV build; --features custom-protocol did not take effect." >&2
+    return 1
+  fi
+  echo "build mode: production (frontend embedded, no dev-server dependency)"
+}
+
+check() {
+  cd "$srcdir/$pkgname-$pkgver"
+  # The launcher crate is included for the Linux-only startup workarounds in
+  # main.rs, which are exactly the code a Windows-first project is least likely
+  # to notice breaking.
+  cargo test --release --locked -p rfm-core -p reforgermods-launcher
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  install -Dm755 target/release/reforgermods-launcher \
+    "$pkgdir/usr/bin/reforgermods-launcher"
+
+  install -Dm644 packaging/arch/reforgermods-launcher.desktop \
+    "$pkgdir/usr/share/applications/reforgermods-launcher.desktop"
+
+  for size in 32 128; do
+    install -Dm644 "src-tauri/icons/${size}x${size}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/reforgermods-launcher.png"
+  done
+  install -Dm644 src-tauri/icons/128x128@2x.png \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/reforgermods-launcher.png"
+  install -Dm644 src-tauri/icons/icon.png \
+    "$pkgdir/usr/share/icons/hicolor/512x512/apps/reforgermods-launcher.png"
+}

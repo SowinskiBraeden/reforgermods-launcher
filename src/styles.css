@@ -1,0 +1,1319 @@
+/*
+ * reforgermods.net launcher chrome.
+ *
+ * A dense, dark-teal desktop utility: hairline borders, one restrained accent,
+ * compact type, no gradients or oversized cards. Sized in px on purpose —
+ * this is a fixed-scale desktop application, not a responsive web page, and
+ * high-DPI is handled by the WebView's device pixel ratio.
+ */
+
+/*
+ * Palette and type are taken from reforgermods.net's own dark theme
+ * (`[data-bs-theme="dark"]` in the site's global stylesheet), so the launcher
+ * and the site read as one product: near-black blue-greys, a single olive
+ * accent, and the site's condensed type stack.
+ *
+ * Token names stay launcher-local; the comment on each records the site token
+ * it mirrors, so a change on the site can be traced here.
+ */
+:root {
+  --bg: #050d10;              /* --site-bg */
+  --bg-panel: #0d171b;        /* --site-panel */
+  --bg-raised: #152126;       /* --site-panel-soft */
+  --bg-sunken: #060f12;       /* --site-inset */
+  --bg-hover: #121c21;        /* --site-card */
+  --bg-active: #1a272d;       /* --site-card-hover */
+  --bg-band: #071114;         /* --site-band */
+
+  --border: rgba(170, 185, 196, 0.15);        /* --site-border */
+  --border-muted: rgba(170, 185, 196, 0.09);  /* --site-muted-border */
+  --border-strong: rgba(170, 185, 196, 0.31); /* --site-strong-border */
+  --border-input: #303f46;                    /* --site-input-border */
+
+  --text: #f4f4f1;            /* --site-text-strong */
+  --text-dim: #aeb8c2;        /* --site-text-muted */
+  --text-faint: #75828c;      /* --site-text-faint */
+
+  /* The brand accent is olive, not teal. --accent-deep is the seated variant
+     used behind text, and is dark enough for #0b1116 to sit on it. */
+  --accent: #8b9d63;          /* --site-accent */
+  --accent-strong: #a4b873;   /* --site-accent-strong */
+  --accent-deep: #6d7d4c;
+  --accent-bg: rgba(139, 157, 99, 0.13); /* --site-accent-dim */
+  --on-accent: #0b1116;
+
+  --good: #a4b873;
+  --warn: #c99044;            /* --site-orange */
+  --bad: #c2705a;             /* --rm-fall */
+  --info: #9aa7b7;            /* --site-blue */
+
+  --row-h: 30px;
+  --nav-w: 172px;
+  --inspector-w: 348px;
+
+  /* The site's condensed stack. It is a large part of the brand's look, and it
+     buys roughly 15% more characters per column in the server table. */
+  --sans: "Arial Narrow", "Roboto Condensed", "Agency FB", "Segoe UI", system-ui, sans-serif;
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  /* A desktop chrome, not a document: no accidental text selection on labels. */
+  user-select: none;
+  cursor: default;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Focus is always visible, and always the accent. */
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-sunken);
+}
+::-webkit-scrollbar-thumb {
+  background: #1e2d34;
+  border: 2px solid var(--bg-sunken);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3d45;
+}
+
+/* ------------------------------------------------------------------ shell */
+
+.shell {
+  display: grid;
+  grid-template-rows: 32px 1fr;
+  grid-template-columns: var(--nav-w) 1fr;
+  grid-template-areas:
+    "title title"
+    "nav   main";
+  height: 100%;
+}
+
+/* One bar doing the work of the native caption and a brand strip. */
+.titlebar {
+  grid-area: title;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 10px;
+  background: var(--bg-band);
+  border-bottom: 1px solid var(--border);
+  /* Nothing in the caption should be selectable while dragging. */
+  user-select: none;
+}
+
+.titlebar__mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: block;
+  object-fit: contain;
+}
+
+.titlebar__name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.titlebar__name em {
+  font-style: normal;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.titlebar__context {
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  padding-left: 4px;
+  border-left: 1px solid var(--border);
+  margin-left: 2px;
+}
+
+.titlebar__spacer {
+  flex: 1;
+  align-self: stretch;
+}
+
+/* Caption buttons. Windows metrics: 46x32, close goes red on hover. */
+.wincontrols {
+  display: flex;
+  align-self: stretch;
+  margin-left: 8px;
+}
+.wincontrols__btn {
+  width: 46px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+.wincontrols__btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.wincontrols__btn--close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.nav {
+  grid-area: nav;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 6px;
+  gap: 1px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.nav__label {
+  padding: 10px 8px 4px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.nav__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nav__item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.nav__item[aria-current="true"] {
+  background: var(--bg-active);
+  color: var(--text);
+}
+.nav__count {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.nav__spacer {
+  flex: 1;
+}
+
+.nav__foot {
+  padding: 8px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.main {
+  grid-area: main;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--inspector-w);
+}
+.main--full {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 1120px) {
+  .main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inspector {
+    position: fixed;
+    top: 32px;
+    right: 0;
+    bottom: 0;
+    width: var(--inspector-w);
+    z-index: 20;
+    box-shadow: -12px 0 24px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* ----------------------------------------------------------------- status */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+.status__dot--ok {
+  background: var(--good);
+}
+.status__dot--warn {
+  background: var(--warn);
+}
+.status__dot--bad {
+  background: var(--bad);
+}
+
+/* A hairline rule rather than a middot: the old form read as machine output. */
+.status__divider {
+  width: 1px;
+  height: 11px;
+  background: var(--border-strong);
+}
+
+/* --------------------------------------------------------------- controls */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.search {
+  position: relative;
+  flex: 1 1 200px;
+  min-width: 140px;
+  max-width: 380px;
+}
+.search input {
+  width: 100%;
+  height: 24px;
+  padding: 0 46px 0 8px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-input);
+  border-radius: 3px;
+  user-select: text;
+  cursor: text;
+}
+.search input::placeholder {
+  color: var(--text-faint);
+}
+.search input:focus {
+  border-color: var(--accent-deep);
+  outline: none;
+}
+.search__hint {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  padding: 0 4px;
+  pointer-events: none;
+}
+
+select.control,
+input.control {
+  height: 24px;
+  padding: 0 6px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  cursor: pointer;
+}
+input.control {
+  width: 62px;
+  font-family: var(--mono);
+  user-select: text;
+  cursor: text;
+}
+
+.chip {
+  height: 24px;
+  padding: 0 8px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--accent-deep);
+  color: var(--text);
+}
+/* Tri-state: unset -> include -> exclude. */
+.chip[data-state="on"] {
+  background: var(--accent-bg);
+  border-color: var(--accent-deep);
+  color: var(--accent);
+}
+.chip[data-state="off"] {
+  border-color: rgba(194, 112, 90, 0.45);
+  color: var(--bad);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.control-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.toolbar__spacer {
+  flex: 1;
+}
+
+.linkish {
+  background: none;
+  border: 0;
+  padding: 0 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--border-strong);
+}
+.linkish:hover {
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ table */
+
+.browser {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.table {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  background: var(--bg);
+  /* Reserve the gutter so rows do not shift when the list becomes scrollable. */
+  scrollbar-gutter: stable;
+}
+
+/* One definition for both, so a column can never drift from its heading. */
+.thead,
+.row {
+  display: grid;
+  /* The narrow numeric columns carry a sort arrow beside their heading when
+     they are the active ordering, so each has room for the label plus the
+     arrow. Sized for the longest heading, not the widest value. */
+  grid-template-columns:
+    minmax(170px, 1fr) 58px 76px 62px 54px 88px 56px 72px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+}
+
+.thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 26px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-strong);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.thead .num {
+  text-align: right;
+}
+.thead .mid {
+  text-align: center;
+}
+
+/* Sortable column heading. A button for keyboard and screen-reader access,
+   stripped back to look exactly like the static headings beside it. */
+.th-sort {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.th-sort.num {
+  justify-content: flex-end;
+}
+.th-sort.mid {
+  justify-content: center;
+}
+.th-sort__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.th-sort:hover,
+.th-sort[data-active="true"] {
+  color: var(--text-dim);
+}
+.th-sort:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+.th-sort__arrow {
+  flex: none;
+  font-size: 8px;
+  line-height: 1;
+  color: var(--accent-strong);
+}
+/* Hollow, and in the dimmer accent: this ordering reorders the loaded page
+   only. The shape carries it without relying on colour alone, and the footer
+   states it in words. */
+.th-sort__arrow[data-scope="page"] {
+  color: var(--accent);
+}
+
+.rows {
+  position: relative;
+}
+
+.row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--row-h);
+  border-bottom: 1px solid var(--border-muted);
+  cursor: pointer;
+}
+.row:hover {
+  background: var(--bg-hover);
+}
+.row[aria-selected="true"] {
+  background: var(--bg-active);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.row--offline {
+  color: var(--text-faint);
+}
+
+.cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell.num {
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ping is a short, roughly fixed-width figure with nothing to its right to
+   align against, so centring reads better than a ragged right edge. */
+.cell.mid {
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.cell.dim {
+  color: var(--text-dim);
+}
+
+/* Latency bands. Restrained on purpose: a coloured number per row would turn
+   the table into a traffic light. */
+.cell.ping[data-band="good"] {
+  color: var(--accent-strong);
+}
+.cell.ping[data-band="ok"] {
+  color: var(--text-dim);
+}
+.cell.ping[data-band="far"] {
+  color: var(--warn);
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.name__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.star {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: #4e6260;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+}
+.star:hover {
+  color: var(--accent-strong);
+  background: var(--bg-raised);
+}
+.star[data-on="true"] {
+  color: #d9b44a;
+}
+
+/* Status marks. Muted by default: on a list where most servers run BattlEye,
+   a bright mark on every row is noise, and only the exceptions should draw the
+   eye. */
+.marks {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-faint);
+}
+.marks__i {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+}
+.marks__i--official {
+  color: var(--accent);
+}
+.marks__i--locked {
+  color: var(--warn);
+}
+.marks__i--offline {
+  color: var(--bad);
+}
+
+/* A full server is worth noticing; everything else reads from the figure. */
+.cell[data-full="true"] {
+  color: var(--warn);
+}
+
+.tags {
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+}
+
+/* Platform marks, as on the site: a tinted glyph in a quiet tile. */
+.platforms {
+  display: flex;
+  gap: 3px;
+}
+.platforms__badge {
+  width: 20px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+.platforms__badge svg {
+  display: block;
+}
+
+.tag {
+  flex: none;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 13px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+.tag--accent {
+  color: var(--accent);
+  border-color: var(--accent-deep);
+  background: var(--accent-bg);
+}
+.tag--warn {
+  color: var(--warn);
+  border-color: rgba(201, 144, 68, 0.4);
+}
+
+/* ------------------------------------------------------------- inspector */
+
+.inspector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.inspector__head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.inspector__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  user-select: text;
+  cursor: text;
+  overflow-wrap: anywhere;
+}
+
+.inspector__sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.inspector__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.inspector__foot {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.fact {
+  background: var(--bg-raised);
+  padding: 6px 8px;
+  min-width: 0;
+}
+.fact__k {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.fact__v {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section {
+  margin-top: 14px;
+}
+.section__h {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.modlist {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  max-height: 210px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: var(--bg-sunken);
+}
+.modlist__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px 62px;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 9px;
+  font-size: 11px;
+}
+/* Banding instead of a rule per row: 122 hairlines read as a grid, not a list. */
+.modlist__row:nth-child(odd) {
+  background: rgba(170, 185, 196, 0.03);
+}
+.modlist__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+}
+.modlist__version,
+.modlist__size {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.modlist__size {
+  text-align: right;
+}
+
+.btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent-deep);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn--primary {
+  width: 100%;
+  height: 32px;
+  font-weight: 600;
+  background: var(--accent-deep);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.btn-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.btn-row .btn {
+  flex: 1;
+}
+
+/* ------------------------------------------------------------ list states */
+
+.state {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-dim);
+}
+.state__title {
+  color: var(--text);
+  font-weight: 600;
+}
+.state__hint {
+  font-size: 11.5px;
+  max-width: 44ch;
+  color: var(--text-faint);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+}
+.banner--error {
+  color: var(--bad);
+  border-bottom-color: rgba(194, 112, 90, 0.35);
+  background: rgba(194, 112, 90, 0.08);
+}
+.banner--warn {
+  color: var(--warn);
+  background: rgba(201, 144, 68, 0.08);
+  border-bottom-color: rgba(201, 144, 68, 0.3);
+}
+
+/* Indeterminate progress hairline under the toolbar during a refresh. */
+.loadbar {
+  height: 1px;
+  background: var(--border);
+  overflow: hidden;
+  position: relative;
+}
+.loadbar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: var(--accent);
+  animation: slide 1.1s ease-in-out infinite;
+}
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loadbar::after {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
+
+.footbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 24px;
+  padding: 0 10px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+.footbar__spacer {
+  flex: 1;
+}
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pager button {
+  height: 17px;
+  min-width: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 10px;
+}
+.pager button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* --------------------------------------------------------------- settings */
+
+.page {
+  padding: 16px 20px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.page h2 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.page__lede {
+  margin: 0 0 18px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  max-width: 68ch;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 320px);
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  max-width: 560px;
+}
+.field__k {
+  font-size: 11.5px;
+}
+.field__hint {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-top: -4px;
+}
+.field input[type="text"],
+.field input[type="number"] {
+  width: 100%;
+  height: 24px;
+  padding: 0 8px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-input);
+  border-radius: 3px;
+  user-select: text;
+  cursor: text;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.field input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-deep);
+  cursor: pointer;
+}
+
+.simple-list {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  max-width: 760px;
+}
+.simple-list__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-muted);
+  background: var(--bg-panel);
+}
+.simple-list__row:last-child {
+  border-bottom: 0;
+}
+.simple-list__row:hover {
+  background: var(--bg-hover);
+}
+.simple-list__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.simple-list__meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ history chart */
+
+.rangeswitch {
+  display: flex;
+  gap: 2px;
+}
+.rangeswitch button {
+  height: 16px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text-faint);
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1;
+}
+.rangeswitch button:hover {
+  color: var(--text);
+}
+.rangeswitch button[data-on="true"] {
+  color: var(--accent);
+  border-color: var(--accent-deep);
+  background: var(--accent-bg);
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: 56px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.chart__band {
+  fill: var(--accent);
+  fill-opacity: 0.16;
+  stroke: none;
+}
+.chart__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.chart__legend {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.chart__legend b {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.chart__bucket {
+  margin-left: auto;
+}
+
+/* --------------------------------------------------------- mod readiness */
+
+/* Information only: no action attached, so it is a note rather than a card.
+   The state is carried by a dot, not a coloured edge down the side — the same
+   treatment that made the nav look wrong. */
+.readiness {
+  margin-bottom: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-sunken);
+}
+
+.readiness__line {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.readiness[data-tone="ready"] .readiness__line {
+  color: var(--text);
+}
+
+.readiness__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transform: translateY(-1px);
+}
+.readiness[data-tone="ready"] .readiness__dot {
+  background: var(--good);
+}
+.readiness[data-tone="action"] .readiness__dot {
+  background: var(--warn);
+}
+
+/* Label over figure, so the numbers read as a row of small stats rather than
+   a sentence fragment. */
+.readiness__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 7px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-muted);
+}
+.readiness__counts div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.readiness__counts dt {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.readiness__counts dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.readiness__counts div:last-child {
+  margin-left: auto;
+  align-items: flex-end;
+}
+
+select.control--wide {
+  max-width: 170px;
+}
+
+/* ------------------------------------------------------- scenario imagery */
+
+/* 16:9 banner at the top of the inspector. Fixed ratio so the panel does not
+   jump as images load, and cropped rather than letterboxed. */
+.scenario {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  flex: none;
+}
+.scenario__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* Fade the lower edge so the title below it stays legible over busy artwork. */
+.scenario::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 46%;
+  background: linear-gradient(to bottom, transparent, var(--bg-panel));
+  pointer-events: none;
+}
+
+.fact__v--muted {
+  color: var(--text-faint);
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.identity code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  padding: 2px 6px;
+  user-select: text;
+}
+
+/* Discord invite, when a server advertises one in its name. */
+.btn--discord {
+  width: 100%;
+  margin-top: 6px;
+  border-color: #454b7a;
+  color: #b3baf5;
+}
+.btn--discord:hover:not(:disabled) {
+  background: #2b2f4d;
+  border-color: #5865f2;
+  color: #fff;
+}
+
+/* Wordmark, coloured as on reforgermods.net. */
+.wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  white-space: nowrap;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+.wordmark__reforger {
+  color: #f4f4f1;
+}
+.wordmark__mods {
+  color: var(--accent-strong);
+}
+.wordmark__net {
+  color: #aab6c3;
+}
+.wordmark__app {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--text-faint);
+  margin-left: 6px;
+}
+
+/* Separator between the two header counts. */
+.titlebar__dot {
+  display: inline-block;
+  width: 1px;
+  height: 9px;
+  margin: 0 7px;
+  vertical-align: -1px;
+  background: var(--border-strong);
+}
+
+/* Platform tags are informational, not status: keep them quieter than BE. */
+

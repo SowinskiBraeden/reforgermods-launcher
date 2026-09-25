@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Minimum permissions for the launcher window. The window is frameless, so the UI may drag it and operate its own caption buttons — and nothing else. The UI may only invoke this app's own commands; it is granted no filesystem, shell, HTTP or opener access. URIs are opened from Rust, after the server id has been validated.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close"
+  ]
+}

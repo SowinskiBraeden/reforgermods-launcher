@@ -1,0 +1,27 @@
+{
+  "name": "reforgermods-launcher",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.11.2",
+    "@tauri-apps/api": "^2.11.1",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@tauri-apps/cli": "^2.11.5",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9",
+    "vitest": "^5.0.1"
+  }
+}

@@ -1,0 +1,44 @@
+[package]
+name = "rfm-core"
+description = "Core logic for the reforgermods.net launcher: API client, Steam launch URIs, local state."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+base64.workspace = true
+uuid = { workspace = true }
+sha2 = { workspace = true }
+
+# TLS backend, chosen per target.
+#
+# Windows gets schannel through native-tls: no bundled C crypto library to
+# build (reqwest's rustls path pulls aws-lc-sys, which needs cmake and nasm on
+# Windows), a smaller binary, and the trust store the machine already manages —
+# which matters behind corporate TLS inspection.
+#
+# Everywhere else uses reqwest's default rustls stack, so a Linux or macOS
+# checkout builds without OpenSSL development headers.
+[target.'cfg(windows)'.dependencies]
+reqwest = { workspace = true, features = ["native-tls"] }
+# Reads HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid for install identity.
+winreg = "0.56.0"
+# IcmpSendEcho through the IP Helper API: no elevation required.
+winping = "0.10.1"
+
+[target.'cfg(not(windows))'.dependencies]
+reqwest = { workspace = true, features = ["default-tls"] }
+
+[target.'cfg(unix)'.dependencies]
+# Unprivileged ICMP datagram sockets.
+surge-ping = "0.9.1"
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time"] }

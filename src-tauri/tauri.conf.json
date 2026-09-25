@@ -1,0 +1,74 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "reforgermods.net launcher",
+  "version": "0.1.0",
+  "identifier": "net.reforgermods.launcher",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "reforgermods.net launcher",
+        "width": 1400,
+        "height": 880,
+        "minWidth": 1000,
+        "minHeight": 620,
+        "resizable": true,
+        "center": true,
+        "decorations": false,
+        "theme": "Dark",
+        "dragDropEnabled": false,
+        "backgroundColor": "#050d10"
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "font-src": "'self'",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "img-src": "'self' data: https://ar-gcp-cdn.bistudio.com",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "frame-src": "'none'"
+      },
+      "capabilities": ["main"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
+    "publisher": "reforgermods.net",
+    "shortDescription": "Server browser and direct launcher for Arma Reforger.",
+    "longDescription": "A fast, lightweight desktop companion for Arma Reforger built on the reforgermods.net API: live server browser, filtering, favorites and direct joining through Steam.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://dl.reforgermods.net/updates/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIxMDJFNDhENEZDNTE4M0IKUldRN0dNVlBqZVFDc1dBTHlSY2tsakRyNjYvZHdpdWNHQzRud3dzeGhlTTFidmwrekNaUlJYdEYK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

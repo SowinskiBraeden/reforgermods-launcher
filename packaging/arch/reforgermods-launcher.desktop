@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=reforgermods.net launcher
+GenericName=Arma Reforger Server Browser
+Comment=Server browser and direct launcher for Arma Reforger.
+Exec=reforgermods-launcher
+Icon=reforgermods-launcher
+Terminal=false
+Categories=Game;Network;
+Keywords=Arma;Reforger;server;browser;launcher;
+StartupNotify=true
+StartupWMClass=reforgermods-launcher

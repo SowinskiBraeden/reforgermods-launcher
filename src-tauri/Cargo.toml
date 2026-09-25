@@ -1,0 +1,64 @@
+[package]
+name = "reforgermods-launcher"
+description = "reforgermods.net launcher: a fast desktop server browser and direct launcher for Arma Reforger."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# Tauri builds the app as a library so the mobile targets can link it; the
+# desktop binary in main.rs is a thin wrapper around run().
+name = "reforgermods_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# Tauri decides dev-vs-production from this feature, NOT from the cargo profile.
+# `tauri`'s build script computes `dev = !custom_protocol`, and in dev mode
+# `generate_context!` makes the app load its UI from `build.devUrl`
+# (http://localhost:1420) instead of the embedded frontend. Without this a
+# release build still ships as a dev build and shows ERR_CONNECTION_REFUSED on
+# any machine that is not running `npm run dev`.
+#
+# `cargo tauri build` passes this automatically; a direct `cargo build` must be
+# given `--features custom-protocol`. See scripts/build-windows.sh.
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+rfm-core = { path = "../crates/rfm-core" }
+tauri = { version = "2.11.6", features = [] }
+tauri-plugin-opener = "2.5.5"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+discord-rich-presence = "1.1.0"
+
+# Windows only, on purpose. The updater replaces the installed application in
+# place, which is correct for an NSIS per-user install and wrong for the Arch
+# package: a distro package is updated by the distro's tooling, not by the app
+# rewriting its own files under /usr/bin (docs/distribution.md section 7).
+# Scoping it here rather than with cfg! keeps the dependency out of the Linux
+# build entirely.
+[target.'cfg(target_os = "windows")'.dependencies]
+# default-features = false is not tidiness: the plugin's defaults include
+# `rustls-tls`, and because Cargo unions features across a shared dependency that
+# switches the *whole binary's* reqwest onto rustls. That pulls in ring, undoing
+# the deliberate schannel choice in rfm-core/Cargo.toml — no bundled C crypto to
+# build, and the machine's own trust store, which is what works behind corporate
+# TLS inspection. It also does not cross-compile: ring's build script fails under
+# cargo-xwin, so the mistake shows up as a broken Windows build rather than a
+# silently different TLS stack.
+#
+# `zip` is kept although the current NSIS bundle is signed in place and ships as
+# a plain -setup.exe: Tauri emits a zipped artifact for some bundle types, and a
+# plugin that cannot unpack one fails on the user's machine at install time,
+# which is the worst place to discover a missing feature flag.
+tauri-plugin-updater = { version = "2.12.0", default-features = false, features = [
+    "native-tls",
+    "system-proxy",
+    "zip",
+] }

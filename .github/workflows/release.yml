@@ -1,0 +1,266 @@
+# Build, sign and publish a launcher release.
+#
+# Triggered by a version tag. The tag is the instruction: the job refuses to
+# build unless the tag and every version in the tree already agree, because an
+# updater manifest that disagrees with the installed version either loops
+# forever or never fires (docs/distribution.md section 6).
+#
+# The Windows build runs here rather than cross-compiled from Linux, even though
+# scripts/build-windows.sh works: NSIS bundling and Authenticode signing both
+# want Windows tooling, and the signing credential should live in one place that
+# is not a laptop.
+#
+# Stored under .github/workflows so both GitHub Actions and Gitea Actions pick it
+# up, matching the other two repositories.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  # Reruns of a published tag, for when a publish step failed and the artifacts
+  # are fine. Builds only; nothing is published without a tag.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, without the leading v (e.g. 0.1.0)'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    # A protected environment: put the signing and R2 credentials on it, and add
+    # required reviewers so publishing a release needs a human.
+    environment: release
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+
+      # The tag is the source of truth for what is being released; the tree has
+      # to already say the same thing.
+      - name: Check the version agrees with the tag
+        id: version
+        shell: bash
+        run: |
+          tag="${{ inputs.version || github.ref_name }}"
+          scripts/version.sh check "$tag"
+          echo "version=$(scripts/version.sh show)" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      # Re-validated here rather than trusting that CI ran on this commit: a
+      # release is the one build that must not ship a known-broken tree.
+      - name: Checks
+        run: |
+          npm run check
+          npm test
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test -p rfm-core
+
+      # Signing is optional so the pipeline works before Azure Trusted Signing is
+      # provisioned. When the secrets are absent the build is simply unsigned, and
+      # the summary says so — rather than the whole release failing, or worse,
+      # silently producing an unsigned installer that the notes call signed.
+      - name: Decide whether artifacts can be signed
+        id: signing
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          RFM_SIGN_ENDPOINT: ${{ vars.RFM_SIGN_ENDPOINT }}
+        run: |
+          if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$RFM_SIGN_ENDPOINT" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Azure Trusted Signing is not configured; this release will be UNSIGNED and will show the SmartScreen warning."
+          fi
+
+      - name: Install the signing tool
+        if: steps.signing.outputs.enabled == 'true'
+        run: cargo install trusted-signing-cli --locked
+
+      # TAURI_SIGNING_PRIVATE_KEY is the updater key, which is a different thing
+      # from Authenticode code signing: it proves an update came from this project,
+      # while Authenticode is what stops SmartScreen calling the download unknown.
+      # Both are needed and they solve different problems.
+      - name: Build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          RFM_SIGN_ENDPOINT: ${{ vars.RFM_SIGN_ENDPOINT }}
+          RFM_SIGN_ACCOUNT: ${{ vars.RFM_SIGN_ACCOUNT }}
+          RFM_SIGN_PROFILE: ${{ vars.RFM_SIGN_PROFILE }}
+        shell: bash
+        run: |
+          if [ "${{ steps.signing.outputs.enabled }}" = "true" ]; then
+            # The overlay adds only bundle.windows.signCommand, so Tauri signs each
+            # artifact during bundling and the updater zip contains a signed
+            # installer.
+            npm run tauri -- build --config src-tauri/tauri.signing.conf.json
+          else
+            npm run tauri -- build
+          fi
+
+      # The portable exe is the same binary the installer wraps, offered for people
+      # who will not run installers. It costs nothing to publish.
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          mkdir -p dist/release
+          nsis="target/release/bundle/nsis"
+          cp "$nsis"/*-setup.exe "dist/release/reforgermods-launcher-${version}-setup.exe"
+          cp "target/release/reforgermods-launcher.exe" "dist/release/reforgermods-launcher-${version}.exe"
+          # The NSIS bundle is signed in place, so the updater artifact is the
+          # installer itself plus a detached .sig. It exists only when the signing
+          # key was available; an unsigned release simply has no updater entry.
+          for f in "$nsis"/*-setup.exe.sig; do
+            [ -e "$f" ] || continue
+            cp "$f" "dist/release/reforgermods-launcher-${version}-setup.exe.sig"
+          done
+          ls -l dist/release
+
+      # Uploaded whether or not publishing happens, so a failed publish never
+      # means rebuilding.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ steps.version.outputs.version }}
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 14
+
+      # The updater key is read through env rather than interpolated into the
+      # script: `${{ secrets.X }}` in a run block writes the secret into the shell
+      # command itself, and only the log is masked.
+      - name: Summary
+        shell: bash
+        env:
+          HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          SIGNED: ${{ steps.signing.outputs.enabled }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "### Launcher $VERSION"
+            if [ "$SIGNED" = "true" ]; then
+              echo "- Authenticode: **signed**"
+            else
+              echo "- Authenticode: **UNSIGNED** — expect the SmartScreen warning"
+            fi
+            if [ "$HAS_UPDATER_KEY" = "true" ]; then
+              echo "- Updater: artifacts signed, \`latest.json\` will be published"
+            else
+              echo "- Updater: **no key configured**, no updater artifacts produced"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish to R2
+    needs: windows
+    runs-on: ubuntu-latest
+    # Only a tag publishes. A manual run builds and stops, so it can be used to
+    # check a release without touching what is live.
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-${{ needs.windows.outputs.version }}
+          path: dist/release
+
+      # The Arch package is not built here: it needs an Arch userspace (see
+      # scripts/build-arch.sh, which runs one in a container) and is handed over
+      # per tester rather than published. Drop it into dist/release before the
+      # manifest step if that changes.
+      - name: Build the manifests
+        run: |
+          python3 scripts/release-manifest.py \
+            --version "${{ needs.windows.outputs.version }}" \
+            --artifacts dist/release \
+            --base-url "https://dl.reforgermods.net" \
+            --out dist/release
+
+      - name: Checksums
+        working-directory: dist/release
+        run: |
+          sha256sum -- * > SHA256SUMS || true
+          # The manifests are generated from the artifacts, so they must not be
+          # listed as if they were part of the signed set.
+          grep -v -E '(releases|latest)\.json|SHA256SUMS' SHA256SUMS > sums.tmp
+          mv sums.tmp SHA256SUMS
+          cat SHA256SUMS
+
+      # dl.reforgermods.net is an R2 bucket with a custom domain. Versioned paths
+      # are immutable; only /updates/latest.json and /releases.json move, which is
+      # what makes a rollback a matter of re-publishing one small file.
+      - name: Publish
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BUCKET: reforgermods-launcher-downloads
+        run: |
+          set -euo pipefail
+          version="${{ needs.windows.outputs.version }}"
+          put() {
+            npx --yes wrangler@4 r2 object put "$BUCKET/$1" --file "$2" --content-type "$3" --remote
+          }
+          for file in dist/release/*; do
+            name="$(basename "$file")"
+            case "$name" in
+              releases.json|latest.json) continue ;;
+              *.exe) type="application/vnd.microsoft.portable-executable" ;;
+              *.zip) type="application/zip" ;;
+              *.zst) type="application/zstd" ;;
+              *) type="text/plain; charset=utf-8" ;;
+            esac
+            put "$version/$name" "$file" "$type"
+          done
+          # Last, and in this order: the updater manifest only starts pointing at a
+          # release once every file it names is already in place.
+          put "updates/latest.json" dist/release/latest.json "application/json"
+          put "releases.json" dist/release/releases.json "application/json"
+
+      - name: Next step
+        run: |
+          {
+            echo "### Published ${{ needs.windows.outputs.version }}"
+            echo "Artifacts are live under \`https://dl.reforgermods.net/${{ needs.windows.outputs.version }}/\`."
+            echo ""
+            echo "The website's download panel reads its own copy of the manifest."
+            echo "Copy \`releases.json\` from this run's artifacts into"
+            echo "\`public/static/launcher/releases.json\` in reforgermods-web and deploy,"
+            echo "or the page will keep offering the previous release."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifests-${{ needs.windows.outputs.version }}
+          path: |
+            dist/release/releases.json
+            dist/release/latest.json
+            dist/release/SHA256SUMS
